@@ -1,3 +1,12 @@
+/*******************************
+* Name: Robert Boespflug
+* Date: 06/05/2018
+* Description: This is the file transfer server. This program 
+* waits for a cmd from the ftclient and sends either the file that
+* was requested or the entire current directory. Txt files only. 
+********************************/
+
+
 #include <stdio.h>
 #include <arpa/inet.h>
 #include <dirent.h>
@@ -9,153 +18,156 @@
 #include <netinet/in.h>
 
 
-//error function
-void error(const char *msg) { perror(msg); exit(1); } 
+//error function calls perror and exits
+void error(const char *msg) { perror(msg); exit(1); }
+
+//function prototypes 
 void bind_(struct sockaddr_in * ADDRESS, int * SOCKET);
 void receive_conn(char buffer[], int * CONNECTION);
-void setup(int * SOCKET, int * option);
+void setup_sock(int * SOCKET, int * option);
 int countFiles(DIR * dir, struct dirent * file_in);
 void getFiles(DIR * dir, struct dirent * file_in, char * buffer[]);
 void sendFile(char * filename, int DATA_CONNECTION);
-void sendFileName(char * filename, int DATA_CONNECTION);
-void con(struct sockaddr_in * ADDRESS, int * PORT);
+//void sendFileName(char * filename, int DATA_CONNECTION);
+void connect_conn(struct sockaddr_in * ADDRESS, int * PORT);
 void accept_conn(struct sockaddr_in * ADDRESS, int * SOCKET, int * CONNECTION);
-void parse_cmd(char buffer[], char * command, char * file, char * sbPort);
+//void parse_cmd(char buffer[], char * command, char * file, char * sbPort);
 
 
 //main entry point
 int main(int argc, char *argv[])
 {
 	//declare sockets, buffers
-	int RECVSOCKET, CONTROL_CONNECTION, DATA_CONNECTION, DATA_PORT, CONTROL_PORT; //CONTROL_PORT is for extra credit
+	int RECVSOCKET, CONTROL_CONNECTION, DATA_CONNECTION, DATA_PORT, CONTROL_PORT;
 	int option = 1;
 	char buffer[4096];
 	struct sockaddr_in SERVER_ADDRESS, CLIENT_ADDRESS;
 	
-	CONTROL_PORT = atoi(argv[1]); // Get the port number, convert to an integer from a string
+	//get the port number from cmd line, convert to an integer from a string
+	CONTROL_PORT = atoi(argv[1]); 
 	
-	con(&SERVER_ADDRESS, &CONTROL_PORT);
- 
-	setup(&RECVSOCKET, &option);
+	//set up the connection to client
+	connect_conn(&SERVER_ADDRESS, &CONTROL_PORT); 
+	setup_sock(&RECVSOCKET, &option);
 	
-	// Enable the socket to begin listening
-{
-	// Connect socket to port
+	//bind socket to port to create server
 	if (bind(RECVSOCKET, (struct sockaddr *)&SERVER_ADDRESS, sizeof(SERVER_ADDRESS)) < 0) 	
 	{  
 		error("SERVER: ERROR on binding address to socket");
 	}
-	listen(RECVSOCKET, 5); // Flip the socket on - it can now receive up to 5 connections
-
-	accept_conn(&CLIENT_ADDRESS, &RECVSOCKET, &CONTROL_CONNECTION);
-
-	receive_conn(buffer, &CONTROL_CONNECTION);
-
-	char * command; char * file; char * sbPort;
-//	parse_cmd(buffer, command, file, sbPort);
-	
-	//tokenize the command, filename (if necessary), and the data port number
-  	command = strtok(buffer, "@"); 			
-  	file = strtok(NULL, "@");
-	sbPort = strtok(NULL, " "); 		
-
-	//print what the client sent
-	printf("message: %s\n", buffer);
-	printf("the command was: %s\n", command);
-	printf("the file name was: %s\n", file);
-	printf("the sendBackPort was: %s\n", sbPort); //currently string, change to int with atoi when using
-
-	
-	//try to print out the client info (addr) to see if you can send back on it
-	//currently string, change to int with atoi when using
-	//printf("server IP address is: %s\n", inet_ntoa(SERVER_ADDRESS.sin_addr));
-	printf("client IP address is: %s\n", inet_ntoa(CLIENT_ADDRESS.sin_addr));
-	
-	//set up the address struct for the send back to client
-	//memset((char*)&CLIENT_ADDRESS, '\0', sizeof(CLIENT_ADDRESS)); //dont think I need this
-	DATA_PORT = atoi(sbPort); 				    						//may need to change to int first
-	CLIENT_ADDRESS.sin_family = AF_INET; 						    //create a network-capable socket
-	CLIENT_ADDRESS.sin_port = htons(DATA_PORT); 		      	    //store the port number
-
-
-	//convert the machine name into a special addr (dont think I need this)
-	//char hostname[256];
-	//serverHostInfo = gethostbyname(argv[1]); 
-	//if (serverHostInfo == NULL) { error("CLIENT: ERROR no hostname in cmd line arg"); }
-
-	
-	//copy in the adddress (dont think I need this)
-	//memcpy((char*)&CLIENT_ADDRESS.sin_addr.s_addr, (char*)->h_addr, serverHostInfo->h_length); 
-
-
-	//create the socket
-	DATA_CONNECTION = socket(AF_INET, SOCK_STREAM, 0); 
-	if (DATA_CONNECTION < 0) 
+	while(1)
 	{
-		error("CLIENT: ERROR opening socket");
-	}
-	setsockopt(DATA_CONNECTION, SOL_SOCKET, SO_REUSEADDR, &option, sizeof(option));
+		//listen for incoming connections, up to five
+		listen(RECVSOCKET, 5); 
 
-	
-	//connect socket to addr
-	if (connect(DATA_CONNECTION, (struct sockaddr*)&CLIENT_ADDRESS, sizeof(CLIENT_ADDRESS)) < 0) 
-	{	
-		error("CLIENT: ERROR connecting"); 
-	}
-	
-	if(strcmp(command, "-g") == 0) 
-	{
-		sendFile(file, DATA_CONNECTION);
-	}		
-	else if(strcmp(command, "-l") == 0) 
-	{
-		//count number of files in dir
+		//accpet a connection and receive command from client
+		accept_conn(&CLIENT_ADDRESS, &RECVSOCKET, &CONTROL_CONNECTION);
+		receive_conn(buffer, &CONTROL_CONNECTION);
+
+		//tokenize the command, filename (if necessary), and the data port number
+		char * command; char * file; char * sbPort;
+		command = strtok(buffer, "@"); 			
+		if(strcmp(command, "-g") == 0) file = strtok(NULL, "@");
+		if(strcmp(command, "-l") == 0) sbPort = strtok(NULL, "@");
+		else sbPort = strtok(NULL, " "); 	
+
+		//print what the client sent
+		/*printf("message: %s\n", buffer);
+		printf("the command was: %s\n", command);
+		printf("the file name was: %s\n", file);
+		printf("the sendBackPort was: %s\n", sbPort);*/
+
+		//data to screen for info
+		/*printf("client IP address is: %s\n", inet_ntoa(CLIENT_ADDRESS.sin_addr));*/
+		
+		//set up the address struct for the send-back to client
+		DATA_PORT = atoi(sbPort); 				    					//change to int first
+		CLIENT_ADDRESS.sin_family = AF_INET; 						    //create a network socket
+		CLIENT_ADDRESS.sin_port = htons(DATA_PORT); 		      	    //store the port number in network order
 
 
-		//send over that number
-		//wait for acknowledgment
-		//send file names
-		//have server sned you the filename it wants		
-
-
-		DIR * dir = opendir(".");
-		struct dirent * file_in;	
-		if (dir == NULL) { error("Could not open current directory" ); exit(1);}
-		int numfiles = countFiles(dir, file_in);
-		printf("numfiles: %d\n", numfiles);
-		char * buffer[numfiles];
-		getFiles(dir, file_in, buffer);
-		int x = 0;
-		for(x; x < numfiles; x++)
+		//create the socket and set options to be able to quickly reuse the socket
+		DATA_CONNECTION = socket(AF_INET, SOCK_STREAM, 0); 
+		if (DATA_CONNECTION < 0) 
 		{
-			char sbuff[4096];
-			memset(sbuff, '\0', sizeof(sbuff));	
-			strcpy(sbuff, buffer[x]);
-			strcat(sbuff, "#");
-			//if(x == numfiles-1) strcat(sbuff, "%");
-			printf("filename: %s\n", buffer[x]);
-			int chars = 0;
-			while(chars < strlen(buffer[x]))
-			{ chars += send(DATA_CONNECTION, sbuff, strlen(sbuff), 0); }	
+			error("CLIENT: ERROR opening socket");
 		}
-		x = 0;
-		for(x; x < numfiles; x++)
+		setsockopt(DATA_CONNECTION, SOL_SOCKET, SO_REUSEADDR, &option, sizeof(option));
+
+		
+		//connect socket to addr
+		if (connect(DATA_CONNECTION, (struct sockaddr*)&CLIENT_ADDRESS, sizeof(CLIENT_ADDRESS)) < 0) 
+		{	
+			error("CLIENT: ERROR connecting"); 
+		}
+		
+		//depending on which cmd the client sent, send back
+		//either the file name requested or the entire contents 
+		//of the current working dir 
+		if(strcmp(command, "-g") == 0) 
 		{
-			sendFile(buffer[x], DATA_CONNECTION);
-		}
+			sendFile(file, DATA_CONNECTION);
+		}		
+		else if(strcmp(command, "-l") == 0) 
+		{
+			//open current dir and init dirent to hold for dir properties
+			DIR * dir = opendir(".");
+			if(dir == NULL) error("Could not open current directory" );
+			struct dirent * file_in;
 
-	}		
-	else
-	{error("bad command: ");}
-	
+			//count the number of txt files in the current dir
+			int numfiles = countFiles(dir, file_in);
+			printf("number of txt files: %d\n", numfiles);
+			
+			//declare an array of strings that represents the filenames
+			char * buffer[numfiles];
+			
+			//the getFiles function will put all the .txt filenames
+			//in the buffer of strings
+			getFiles(dir, file_in, buffer);
+			
+			//for every file in the filename array
+			int x = 0;
+			for(x; x < numfiles; x++)
+			{
+				//make a send buffer to gather the filenames and
+				//delimiters into one string to send over to the client
+				char sbuff[4096];
+				memset(sbuff, '\0', sizeof(sbuff));	
+				strcpy(sbuff, buffer[x]);
+				strcat(sbuff, "#");
+				
+				//send over the send buffer
+				int chars = 0;
+				while(chars < strlen(buffer[x]))
+				{ chars += send(DATA_CONNECTION, sbuff, strlen(sbuff), 0); }	
+			}
+			
+			//for every file in the filename buffer, 
+			//send over that filename
+			x = 0;
+			for(x; x < numfiles; x++)
+			{
+				sendFile(buffer[x], DATA_CONNECTION);
+			}
 
-	close(CONTROL_CONNECTION); 
-	close(RECVSOCKET); //close control port socket
-	close(DATA_CONNECTION);   //close data port socket
+		}		
+		else
+		{error("bad command: ");}
+		
+
+		//close(CONTROL_CONNECTION); 	//close the connection to client
+		//close(RECVSOCKET); 		  	//close control port socket
+		close(DATA_CONNECTION);   	//close data port socket
+	}
 	return 0; 
-	}
+
 }
-void setup(int * SOCKET, int * option)
+
+/*************************
+* Description:
+*************************/
+void setup_sock(int * SOCKET, int * option)
 {	
 	// Set up the socket
 	*SOCKET = socket(AF_INET, SOCK_STREAM, 0); // Create the socket
@@ -163,7 +175,10 @@ void setup(int * SOCKET, int * option)
 	setsockopt(*SOCKET, SOL_SOCKET, SO_REUSEADDR, option, sizeof(int)); //from piazza
 }
 
-void con(struct sockaddr_in * ADDRESS, int * PORT)
+/*************************
+* Description:
+*************************/
+void connect_conn(struct sockaddr_in * ADDRESS, int * PORT)
 {
 	//set up the address struct for this process (the serve
 	memset((char *)ADDRESS, '\0', sizeof(ADDRESS)); // Clear out the address struct
@@ -172,7 +187,9 @@ void con(struct sockaddr_in * ADDRESS, int * PORT)
 	ADDRESS->sin_addr.s_addr = INADDR_ANY; // Any address is allowed for connection to this process
 }
 
-
+/*************************
+* Description:
+*************************/
 int countFiles(DIR * dir, struct dirent * file_in)
 {
 	int fileNum = 0;
@@ -191,6 +208,9 @@ int countFiles(DIR * dir, struct dirent * file_in)
 	return fileNum;
 }
 
+/*************************
+* Description:
+*************************/
 void getFiles(DIR * dir, struct dirent * file_in, char * buffer[])
 {
 	
@@ -212,45 +232,51 @@ void getFiles(DIR * dir, struct dirent * file_in, char * buffer[])
 }
 
 
-void sendFileName(char * filename, int DATA_CONNECTION)
-{
-	int chars = 0;
-	printf("%s\n", filename); 
-	//send over filenames for now (file contents later)
-	while(chars < strlen(filename)) 
-	{
-		chars += send(DATA_CONNECTION, filename, strlen(filename), 0); 
-		printf("chars sent: %d\n", chars);
-	}
-}
 
+
+/*************************
+* Description:
+*************************/
 void sendFile(char * filename, int DATA_CONNECTION)
 {
+		//try to open the passed in filename
+		printf("Sending over: %s\n", filename);
 		FILE * fp;
 		fp = fopen(filename,"r");
+		
+		//if no filename then send back error and stop
+		if(!fp) {
+			send(DATA_CONNECTION, "error", strlen("error"), 0);
+			error("No file found!");
+		}
+		
+		//else file does exist, so make a buffer to hold
+		//the files contents to send back
 		char buffer[4096];
 		memset(buffer, '\0', sizeof(buffer)); 
 		
 		//seek to the beginning of the file
 		fseek(fp, 0, SEEK_SET);
 		
-		//read contents of file
+		//read contents of file into buffer
 		fgets(buffer, sizeof(buffer), fp);	
 		
-		printf("file contents: %s\n", buffer);		
+		//print file contents to window
+		//printf("file contents: %s", buffer);		
 
-		//send it 
+		//send the contents of the file client and close file
 		int chars = 0;
 		while(chars < strlen(buffer)) 
 		{
 			chars += send(DATA_CONNECTION, buffer, strlen(buffer), 0); 
 			printf("chars sent: %d\n", chars);
 		}
-
 		fclose(fp);
 }
 
-//void bind_(struct sockaddr_in * ADDRESS, int * SOCKET)
+/*************************
+* Description:
+*************************/
 void accept_conn(struct sockaddr_in * ADDRESS, int * SOCKET, int * CONNECTION)
 {
 
@@ -261,7 +287,9 @@ void accept_conn(struct sockaddr_in * ADDRESS, int * SOCKET, int * CONNECTION)
 	if (*CONNECTION < 0) { error("SERVER: ERROR on accept! exit "); }
 }
 
-
+/*************************
+* Description:
+*************************/
 void receive_conn(char buffer[], int * CONNECTION)
 {
 	//make sure buffer is null terminated
@@ -274,6 +302,3 @@ void receive_conn(char buffer[], int * CONNECTION)
 
 }
 
-void parse_cmd(char buffer[], char * command, char * file, char * sbPort)
-{
-}

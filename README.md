@@ -1,4 +1,9 @@
-FT client and server to practice socket programming, python and c!
+# File Tranfer Program 
 
-Client sends a cmd for either a specific file or the name of the entire 
-diretory they want and the server sends the file(s) over.
+Created to practice socket programming with Python and C
+
+Client sends a command for either: 
+  1. A specific file
+  2. The name of an entire diretory they want sent over 
+  
+Server then sends the file(s) over.
